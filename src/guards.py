@@ -1,3 +1,4 @@
+# src/guards.py
 import math
 
 def round_down(value: float, step: float) -> float:
@@ -15,14 +16,12 @@ def check_min_notional(symbol_info: dict, price: float, qty: float) -> bool:
     min_notional = float(symbol_info['filters_dict']['MIN_NOTIONAL']['minNotional'])
     return (price * qty) >= min_notional
 
-def build_filters(markets: dict) -> dict:
+def build_filters(markets: list) -> dict:
     """
-    Retourne markets_filtered[symbol] = {
-      'filters_dict': {filterType: filterObj, …}
-    }
+    Retourne un dict {symbol: {'filters_dict': {filterType: filterObj}}}
     """
     mf = {}
-    for sym, info in markets.items():
-        d = {f['filterType']: f for f in info['filters']}
-        mf[sym] = {'filters_dict': d}
+    for m in markets:
+        d = {f['filterType']: f for f in m['filters']}
+        mf[m['symbol']] = {'filters_dict': d}
     return mf
