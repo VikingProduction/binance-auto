@@ -1,27 +1,29 @@
-# src/guards.py
-import math
+# tests/test_guards.py
+import pytest
+from src.guards import round_down, apply_price_filter, apply_lot_size, check_min_notional
 
-def round_down(value: float, step: float) -> float:
-    return math.floor(value / step) * step
+class DummyInfo:
+    filters_dict = {
+        'PRICE_FILTER': {'tickSize': '0.01'},
+        'LOT_SIZE': {'stepSize': '0.1'},
+        'MIN_NOTIONAL': {'minNotional': '10'}
+    }
 
-def apply_price_filter(symbol_info: dict, price: float) -> float:
-    tick = float(symbol_info['filters_dict']['PRICE_FILTER']['tickSize'])
-    return round_down(price, tick)
+def test_round_down():
+    assert round_down(1.234, 0.01) == 1.23
 
-def apply_lot_size(symbol_info: dict, qty: float) -> float:
-    step = float(symbol_info['filters_dict']['LOT_SIZE']['stepSize'])
-    return round_down(qty, step)
+def test_apply_price_filter():
+    info = {'filters_dict': DummyInfo.filters_dict}
+    assert apply_price_filter(info, 1.237) == 1.23
 
-def check_min_notional(symbol_info: dict, price: float, qty: float) -> bool:
-    min_notional = float(symbol_info['filters_dict']['MIN_NOTIONAL']['minNotional'])
-    return (price * qty) >= min_notional
+def test_apply_lot_size():
+    info = {'filters_dict': DummyInfo.filters_dict}
+    assert apply_lot_size(info, 2.34) == 2.3
 
-def build_filters(markets: list) -> dict:
-    """
-    Retourne un dict {symbol: {'filters_dict': {filterType: filterObj}}}
-    """
-    mf = {}
-    for m in markets:
-        d = {f['filterType']: f for f in m['filters']}
-        mf[m['symbol']] = {'filters_dict': d}
-    return mf
+def test_check_min_notional_true():
+    info = {'filters_dict': DummyInfo.filters_dict}
+    assert check_min_notional(info, 1.0, 10.0)
+
+def test_check_min_notional_false():
+    info = {'filters_dict': DummyInfo.filters_dict}
+    assert not check_min_notional(info, 0.5, 1.0)
