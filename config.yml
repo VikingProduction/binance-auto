@@ -1,20 +1,17 @@
-exchange: binance
-timeframe: '1h'
-limit: 200
-filter_bases: ['BTC','ETH','USDT','EUR']
-volume_threshold: 100000        # en USDT
-position_size_pct: 0.1
-indicators:
+# config.yml
+bot:
+  exchange: binance
+  timeframe: '1h'
+  limit: 200
+  filter_bases: ['BTC','ETH','USDT','EUR']
+  volume_threshold: 100000
+  position_size_pct: 0.1
+
+strategy:
   rsi_window: 14
   sma_short_window: 10
   sma_long_window: 50
   rsi_buy: 30
   rsi_sell: 70
-trailing_stop_pct: 0.02         # 2%
-take_profit_pct: 0.05           # 5%
-email:
-  host: smtp.example.com
-  port: 587
-  user: foo@bar.com
-  pass: ${{ secrets.EMAIL_PASS }}
-  to: me@domain.com
+  trailing_stop_pct: 0.02
+  take_profit_pct: 0.05
