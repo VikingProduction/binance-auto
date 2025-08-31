@@ -1,3 +1,4 @@
+# .github/workflows/deploy.yml
 name: 🚀 Trading Bot CI
 
 on:
