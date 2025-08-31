@@ -42,5 +42,5 @@ jobs:
           from: ${{ secrets.EMAIL_USER }}
           content_type: text/plain
           body: |
-            Voici le rapport journalier de trading :
+            Rapport de trading :
             ${{ steps.bot.outputs.report }}
