@@ -1,11 +1,10 @@
-# config.yml
 bot:
   exchange: binance
   timeframe: '1h'
   limit: 200
   filter_bases: ['BTC','ETH','USDT','EUR']
-  volume_threshold: 100000
-  position_size_pct: 0.1
+  volume_threshold: 100000        # Volume minimal en USDT
+  position_size_pct: 0.02        # % d’equity par position
 
 strategy:
   rsi_window: 14
@@ -15,3 +14,11 @@ strategy:
   rsi_sell: 70
   trailing_stop_pct: 0.02
   take_profit_pct: 0.05
+
+risk:
+  daily_loss_limit_pct: 0.05     # Freeze après 5% de perte
+  max_consecutive_losses: 3
+  cooldown_hours: 4
+
+email:
+  to: ${{ secrets.EMAIL_TO }}
