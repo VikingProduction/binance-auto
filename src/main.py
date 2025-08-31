@@ -1,65 +1,76 @@
-import os
-import ccxt
+import asyncio
+import ccxt.async_support as ccxt
 import pandas as pd
 from datetime import datetime
 from indicators import compute_indicators
 from reporter import send_report
+from utils import setup_logger, load_config
 
-# Configuration CCXT
-API_KEY    = os.getenv('API_KEY')
-API_SECRET = os.getenv('API_SECRET')
+logger = setup_logger()
 
-exchange = ccxt.binance({
-    'apiKey': API_KEY,
-    'secret': API_SECRET,
-    'enableRateLimit': True
-})
-
-def get_tradable_symbols():
-    markets = exchange.load_markets()                # Charge tous les marchés
-    symbols = []
-    for sym, m in markets.items():
+async def get_tradable_symbols(exchange, config):
+    markets = await exchange.load_markets()
+    syms = []
+    for sym, data in markets.items():
         base, quote = sym.split('/')
-        # Garder toutes les paires où base ou quote est dans la liste cible
-        if base in ('BTC','ETH','USDT','EUR') or quote in ('BTC','ETH','USDT','EUR'):
-            symbols.append(sym)
-    return symbols
+        vol = float(data.get('info', {}).get('quoteVolume', 0))
+        if (base in config['filter_bases'] or quote in config['filter_bases']) and vol > config['volume_threshold']:
+            syms.append(sym)
+    return syms
 
-def fetch_ohlcv(symbol, timeframe='1h', limit=100):
-    data = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
-    df = pd.DataFrame(data, columns=['timestamp','open','high','low','close','volume'])
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-    return df
+async def fetch_ohlcv(exchange, symbol, config):
+    try:
+        data = await exchange.fetch_ohlcv(symbol, timeframe=config['timeframe'], limit=config['limit'])
+        df = pd.DataFrame(data, columns=['timestamp','open','high','low','close','volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        return df
+    except Exception as e:
+        logger.error(f"fetch_ohlcv {symbol} failed: {e}")
+        return None
 
-def decide_and_execute(df, symbol):
+async def decide_and_execute(exchange, df, symbol, config):
     latest = df.iloc[-1]
-    balance = exchange.fetch_free_balance().get('USDT', 0)
-    if latest['RSI'] < 30 and latest['SMA_short'] > latest['SMA_long']:
-        amount = balance * 0.1 / latest['close']
-        exchange.create_market_buy_order(symbol, amount)
-        return f"BUY {symbol} @ {latest['close']:.2f}"
-    if latest['RSI'] > 70 and latest['SMA_short'] < latest['SMA_long']:
-        positions = exchange.fetch_positions()
-        pos_size = positions.get(symbol, {}).get('size', 0)
-        if pos_size > 0:
-            exchange.create_market_sell_order(symbol, pos_size)
-            return f"SELL {symbol} @ {latest['close']:.2f}"
+    bal = await exchange.fetch_free_balance()
+    usdt_bal = bal.get('USDT', 0)
+    # Achat
+    if latest['RSI'] < config['indicators']['rsi_buy'] and latest['SMA_short'] > latest['SMA_long']:
+        qty = usdt_bal * config['position_size_pct'] / latest['close']
+        order = await exchange.create_market_buy_order(symbol, qty)
+        entry = latest['close']
+        return {'time': datetime.utcnow(), 'action':'BUY', 'symbol':symbol, 'price':entry, 'qty':qty}
+    # Vente / TP / SL
+    pos = (await exchange.fetch_positions()).get(symbol, {})
+    size = pos.get('size', 0)
+    entry = pos.get('entryPrice')
+    if size > 0 and entry:
+        change = (latest['close'] - entry) / entry
+        if change >= config['take_profit_pct']:
+            await exchange.create_market_sell_order(symbol, size)
+            return {'time': datetime.utcnow(), 'action':'TP', 'symbol':symbol, 'price':latest['close']}
+        if change <= -config['trailing_stop_pct']:
+            await exchange.create_market_sell_order(symbol, size)
+            return {'time': datetime.utcnow(), 'action':'SL', 'symbol':symbol, 'price':latest['close']}
     return None
 
-def main():
-    journal = []
-    symbols = get_tradable_symbols()
-    for symbol in symbols:
-        try:
-            df = fetch_ohlcv(symbol)
-            df = compute_indicators(df)
-            action = decide_and_execute(df, symbol)
-            if action:
-                journal.append(f"{datetime.utcnow()} - {action}")
-        except Exception as e:
-            # Ignorer les symboles non tradables ou erreurs ponctuelles
-            continue
-    send_report(journal)
+async def process_symbol(exchange, symbol, config):
+    df = await fetch_ohlcv(exchange, symbol, config)
+    if df is None: return None
+    df = compute_indicators(df, config)
+    return await decide_and_execute(exchange, df, symbol, config)
+
+async def main():
+    config = load_config()
+    exchange = getattr(ccxt, config['exchange'])({
+        'apiKey': os.getenv('API_KEY'),
+        'secret': os.getenv('API_SECRET'),
+        'enableRateLimit': True
+    })
+    symbols = await get_tradable_symbols(exchange, config)
+    tasks = [process_symbol(exchange, sym, config) for sym in symbols]
+    results = await asyncio.gather(*tasks)
+    journal = [r for r in results if r]
+    await send_report(journal, config)
+    await exchange.close()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
