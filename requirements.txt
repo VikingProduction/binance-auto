@@ -1,0 +1,5 @@
+ccxt>=2.0
+pandas>=2.0
+ta>=0.11.0
+PyYAML>=6.0
+smtplib3>=1.0
