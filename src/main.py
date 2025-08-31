@@ -1,8 +1,9 @@
+# src/main.py
 import os
 import asyncio
 import ccxt.async_support as ccxt
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from utils import setup_logger, load_config, validate_env, safe_api_call
 from indicators import compute_indicators
 from guards import build_filters, apply_price_filter, apply_lot_size, check_min_notional
@@ -44,17 +45,18 @@ async def decide_and_execute(exchange, filters, df, symbol, cfg_bot, cfg_strat):
     bal = await safe_api_call(exchange.fetch_free_balance)
     usdt_bal = bal.get('USDT', 0)
     info = filters[symbol]
-    # Compute signals
+
+    # Signal d'achat
     if latest['RSI'] < cfg_strat['rsi_buy'] and latest['SMA_short'] > latest['SMA_long']:
         price = apply_price_filter(info, latest['close'])
         qty = apply_lot_size(info, usdt_bal * cfg_bot['position_size_pct'] / price)
         if not check_min_notional(info, price, qty):
-            logger.warning(f"{symbol} minNotional not met: price×qty={price*qty}")
+            logger.warning(f"{symbol} minNotional non atteint: price×qty={price*qty}")
             return None
-        order = await safe_api_call(exchange.create_order, symbol, 'MARKET', 'buy', qty, price)
+        await safe_api_call(exchange.create_order, symbol, 'MARKET', 'buy', qty, price)
         return {'time': datetime.utcnow(), 'action':'BUY', 'symbol':symbol, 'price':price, 'qty':qty}
 
-    # Position existante
+    # Gestion de position ouverte
     positions = await safe_api_call(exchange.fetch_positions) if hasattr(exchange, 'fetch_positions') else {}
     p = positions.get(symbol, {})
     size, entry = p.get('size', 0), p.get('entryPrice')
@@ -80,13 +82,13 @@ async def process_symbol(exchange, filters, symbol, cfg_bot, cfg_strat):
     if df is None:
         return None
     df = compute_indicators(df, cfg_strat)
-    df.name = symbol
     return await decide_and_execute(exchange, filters, df, symbol, cfg_bot, cfg_strat)
 
 async def main():
     validate_env()
     cfg = load_config()
     cfg_bot, cfg_strat = cfg['bot'], cfg['strategy']
+
     exchange, filters = await init_exchange(cfg_bot)
     symbols = await get_tradable_symbols(exchange, cfg_bot)
 
