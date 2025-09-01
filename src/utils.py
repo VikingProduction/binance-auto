@@ -1,59 +1,46 @@
 # src/utils.py
-import os
-import logging
-import yaml
-from tenacity import retry, wait_exponential_jitter, stop_after_attempt, retry_if_exception_type
-import requests
-import ccxt
-from metrics import BANS, RATE_LIMITS
+import asyncio
+import time
+from typing import Dict, Any, Callable, Awaitable, Optional
 
-@retry(
-    retry=retry_if_exception_type((ccxt.NetworkError, ccxt.RateLimitExceeded)),
-    wait=wait_exponential_jitter(initial=1, max=60),
-    stop=stop_after_attempt(5)
-)
-async def safe_api_call(func, *args, **kwargs):
+from ccxt.base.errors import ExchangeError
+
+_EXINFO_CACHE: Dict[str, Any] = {}
+_EXINFO_TS = 0.0
+_EXINFO_TTL = 600.0  # 10 minutes
+
+async def get_exchange_info(exchange) -> Dict[str, Any]:
+    global _EXINFO_CACHE, _EXINFO_TS
+    now = time.time()
+    if _EXINFO_CACHE and now - _EXINFO_TS < _EXINFO_TTL:
+        return _EXINFO_CACHE
+    # ccxt binance: endpoint brut
+    info = await exchange.publicGetExchangeInfo()
+    _EXINFO_CACHE = info
+    _EXINFO_TS = now
+    return info
+
+async def get_symbol_info(exchange, symbol: str) -> Dict[str, Any]:
+    info = await get_exchange_info(exchange)
+    for s in info.get("symbols", []):
+        if s.get("symbol") == symbol.replace("/", ""):
+            return s
+    raise KeyError(f"Symbol info not found for {symbol}")
+
+async def with_rate_limit_retry(fn: Callable[..., Awaitable], *args, **kwargs):
+    """Enveloppe d'appel avec respect de Retry-After en cas de 429/418."""
     try:
-        return await func(*args, **kwargs)
-    except ccxt.DDoSProtection as e:
-        BANS.inc()
-        logger.error(f"IP banned (418): {e}")
-        await asyncio.sleep(600)  # 10 min cooldown
+        return await fn(*args, **kwargs)
+    except ExchangeError as e:
+        # ccxt n'expose pas toujours headers; fallback 60s
+        retry_after = 60
+        hdrs = getattr(e, "response_headers", None)
+        if hdrs and isinstance(hdrs, dict):
+            ra = hdrs.get("Retry-After")
+            if ra:
+                try:
+                    retry_after = int(ra)
+                except Exception:
+                    pass
+        await asyncio.sleep(retry_after)
         raise
-    except ccxt.RateLimitExceeded as e:
-        RATE_LIMITS.inc()
-        logger.warning(f"Rate limit exceeded: {e}")
-        raise
-
-def setup_logger(name='trading_bot'):
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-    fh = logging.FileHandler('bot.log')
-    fh.setLevel(logging.INFO)
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-    fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-    fh.setFormatter(fmt)
-    ch.setFormatter(fmt)
-    logger.addHandler(fh)
-    logger.addHandler(ch)
-    return logger
-
-def load_config(path='config.yml'):
-    with open(path) as f:
-        return yaml.safe_load(f)
-
-def validate_env():
-    required = ['API_KEY','API_SECRET']
-    for key in required:
-        if not os.getenv(key):
-            raise EnvironmentError(f"Missing required secret: {key}")
-
-@retry(
-    retry=retry_if_exception_type((requests.exceptions.RequestException,)),
-    wait=wait_exponential_jitter(initial=1, max=32),
-    stop=stop_after_attempt(5)
-)
-def safe_api_call(func, *args, **kwargs):
-    """Effectue func(*args, **kwargs) avec retry exponentiel + jitter."""
-    return func(*args, **kwargs)
