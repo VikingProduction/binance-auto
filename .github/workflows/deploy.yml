@@ -1,0 +1,134 @@
+# .github/workflows/deploy.yml
+name: 🚀 Trading Bot CI/CD
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate configuration
+        run: |
+          python - << 'EOF'
+          import yaml
+          cfg = yaml.safe_load(open('config.yml'))
+          assert 'bot' in cfg and 'strategy' in cfg and 'risk' in cfg
+          print('✅ Configuration validée')
+          EOF
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/ -v --tb=short --cov=src --cov-report=term-missing
+
+      - name: Lint code quality
+        run: |
+          python -m flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run trading bot
+        id: bot
+        timeout-minutes: 55
+        run: python -m src.main
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          API_SECRET: ${{ secrets.API_SECRET }}
+          TESTNET: ${{ github.event_name == 'workflow_dispatch' && '0' || '1' }}
+          DRY_RUN: ${{ github.ref != 'refs/heads/main' && '1' || '0' }}
+
+      - name: Capture bot logs
+        if: always()
+        run: |
+          if [ -f trading_bot.log ]; then
+            echo "📊 DERNIÈRES LIGNES DU LOG:" > report.txt
+            tail -50 trading_bot.log >> report.txt
+          else
+            echo "⚠️ Aucun fichier de log trouvé" > report.txt
+          fi
+
+      - name: Send detailed report email
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: "🤖 Bot Trading Report - ${{ job.status }} - ${{ github.run_number }}"
+          to: ${{ secrets.EMAIL_TO }}
+          from: ${{ secrets.EMAIL_USER }}
+          content_type: text/plain
+          body: |
+            📊 RAPPORT AUTOMATIQUE TRADING BOT
+
+            🔧 Détails d'exécution:
+            - Commit: ${{ github.sha }}
+            - Branche: ${{ github.ref_name }}
+            - Statut: ${{ job.status }}
+            - Date: ${{ github.event.head_commit.timestamp }}
+            - Mode: ${{ github.event_name == 'workflow_dispatch' && 'MANUEL' || 'AUTOMATIQUE' }}
+
+            🎯 Configuration:
+            - Testnet: ${{ github.event_name == 'workflow_dispatch' && 'OFF' || 'ON' }}
+            - Dry Run: ${{ github.ref != 'refs/heads/main' && 'ON' || 'OFF' }}
+
+            📈 Logs:
+            ${{ steps.bot.outputs.journal || 'Voir logs GitHub Actions' }}
+
+            🔗 Logs complets:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          attachments: |
+            trading_bot.log
+            report.txt
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f state.json entries.json *.log
