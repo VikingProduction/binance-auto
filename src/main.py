@@ -104,6 +104,23 @@ async def process_symbol(exchange, filters, symbol, cfg_bot, cfg_strat):
     df = compute_indicators(df, cfg_strat)
     return await decide_and_execute(exchange, filters, df, symbol, cfg_bot, cfg_strat)
 
+daily_pnl = 0.0
+start_balance = None
+
+async def check_daily_loss_limit(cfg_risk):
+    global daily_pnl, start_balance
+    if start_balance is None:
+        balance = await safe_api_call(exchange.fetch_balance)
+        start_balance = balance['USDT']['total']
+    
+    current_balance = await safe_api_call(exchange.fetch_balance)
+    daily_pnl = (current_balance['USDT']['total'] - start_balance) / start_balance
+    
+    if daily_pnl <= -cfg_risk['daily_loss_limit_pct']:
+        logger.critical(f"Daily loss limit reached: {daily_pnl:.2%}")
+        return False  # Stop trading
+    return True
+
 async def main():
     validate_env()
     start_metrics_server(port=8000)
