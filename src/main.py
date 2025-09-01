@@ -121,6 +121,24 @@ async def check_daily_loss_limit(cfg_risk):
         return False  # Stop trading
     return True
 
+def validate_market_data(df):
+    if df is None or len(df) < 50:
+        return False
+    
+    # Vérifier les données aberrantes
+    recent_prices = df['close'].tail(10)
+    if recent_prices.std() / recent_prices.mean() > 0.1:  # Volatilité > 10%
+        logger.warning("High volatility detected, skipping trade")
+        return False
+    
+    # Vérifier la continuité temporelle
+    time_diff = df['timestamp'].diff().dropna()
+    if time_diff.std().total_seconds() > 300:  # Gaps > 5min
+        logger.warning("Data gaps detected")
+        return False
+    
+    return True
+
 async def main():
     validate_env()
     start_metrics_server(port=8000)
