@@ -1,26 +1,38 @@
 # src/persistence.py
 import json
-from threading import Lock
+import os
+from typing import Dict, Any
 
-_path = 'entries.json'
-_lock = Lock()
+_STATE_PATH = os.environ.get("BOT_STATE_PATH", "state.json")
 
-def load_entries():
-    try:
-        with open(_path) as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
+_state: Dict[str, Any] = {
+    "positions": {},              # par symbole
+    "entries": {},                # infos d'entrée par symbole
+    "daily": {"date": None, "realized_pnl_quote": 0.0},
+}
 
-def save_entries(data):
-    with _lock:
-        with open(_path, 'w') as f:
-            json.dump(data, f, indent=2)
+def load() -> Dict[str, Any]:
+    global _state
+    if os.path.exists(_STATE_PATH):
+        try:
+            with open(_STATE_PATH, "r", encoding="utf-8") as f:
+                _state = json.load(f)
+        except Exception:
+            pass
+    return _state
 
-def set_entry(symbol, price):
-    data = load_entries()
-    data[symbol] = price
-    save_entries(data)
+def save():
+    with open(_STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump(_state, f, ensure_ascii=False, indent=2)
 
-def get_entry(symbol):
-    return load_entries().get(symbol)
+def state() -> Dict[str, Any]:
+    return _state
+
+def roll_daily_if_needed(today_iso: str):
+    if _state["daily"]["date"] != today_iso:
+        _state["daily"] = {"date": today_iso, "realized_pnl_quote": 0.0}
+        save()
+
+def update_realized_pnl(delta_quote: float):
+    _state["daily"]["realized_pnl_quote"] += float(delta_quote)
+    save()
