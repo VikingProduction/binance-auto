@@ -1,13 +1,17 @@
 # src/metrics.py
-from prometheus_client import Counter, Histogram, start_http_server
-import threading
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
-# Compteurs
-ORDER_COUNT = Counter('bot_order_total', 'Total orders placed', ['action'])
-RATE_LIMITS = Counter('bot_rate_limit_total', 'Total rate limit hits')
-BANS = Counter('bot_ban_total', 'Total ban (418) events')
-DAILY_LOSS = Histogram('bot_daily_loss', 'Daily PnL losses')
+bot_order_total = Counter("bot_order_total", "Orders", ["action"])
+bot_rate_limit_total = Counter("bot_rate_limit_total", "Rate limit hits")
+bot_ban_total = Counter("bot_ban_total", "IP bans")
+bot_daily_pnl = Gauge("bot_daily_pnl", "Daily PnL (quote)")
+open_positions = Gauge("bot_open_positions", "Number of open positions")
+order_latency = Histogram("bot_order_latency_seconds", "Latency to place orders (s)")
 
-def start_metrics_server(port=8000):
-    thread = threading.Thread(target=start_http_server, args=(port,), daemon=True)
-    thread.start()
+_metrics_started = False
+
+def start_metrics_server(port: int = 8000):
+    global _metrics_started
+    if not _metrics_started:
+        start_http_server(port)
+        _metrics_started = True
