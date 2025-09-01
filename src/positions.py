@@ -1,25 +1,20 @@
 # src/positions.py
-import logging
+from typing import Dict, Any
+from .persistence import state, save
+from .metrics import open_positions
 
-logger = logging.getLogger('trading_bot')
+def set_position(symbol: str, qty: float, entry_price: float):
+    st = state()
+    st["positions"][symbol] = {"qty": qty, "entry_price": entry_price}
+    open_positions.set(len(st["positions"]))
+    save()
 
-def normalize_positions(raw):
-    """
-    Prend en entrée raw = list ou dict retourné par fetch_positions()
-    et renvoie un dict {symbol: {'size': float, 'entryPrice': float}}
-    """
-    out = {}
-    # Cas dict {symbol: {...}}
-    if isinstance(raw, dict):
-        items = raw.items()
-    # Cas list [{'symbol':..., 'positionAmt':..., 'entryPrice':...}, ...]
-    else:
-        items = [(p.get('symbol'), p) for p in raw]
-    for symbol, data in items:
-        try:
-            size = float(data.get('size') or data.get('positionAmt') or 0)
-            entry = float(data.get('entryPrice') or data.get('entryPrice') or 0)
-            out[symbol] = {'size': size, 'entryPrice': entry}
-        except Exception as e:
-            logger.error(f"normalize_positions failed for {symbol}: {e}")
-    return out
+def clear_position(symbol: str):
+    st = state()
+    if symbol in st["positions"]:
+        del st["positions"][symbol]
+    open_positions.set(len(st["positions"]))
+    save()
+
+def get_position(symbol: str) -> Dict[str, Any] | None:
+    return state()["positions"].get(symbol)
