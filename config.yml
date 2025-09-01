@@ -19,3 +19,16 @@ risk:
   daily_loss_limit_pct: 0.05      # Gel du bot si perte journalière > 5 %
   max_consecutive_losses: 3
   cooldown_hours: 4               # Heures de pause après X pertes continues
+  max_positions: 5  # Limite de positions simultanées
+  correlation_threshold: 0.7  # Éviter actifs trop corrélés
+  volatility_filter: 0.15  # Skip si volatilité > 15%
+  
+performance:
+  cache_ttl: 300  # Durée cache OHLCV
+  batch_size: 10  # Taille des batches API
+  websocket_enabled: true
+  
+ml:
+  enabled: false
+  model_retrain_hours: 24
+  confidence_threshold: 0.6
