@@ -1,3 +1,8 @@
+# src/batch_api.py
+
+import asyncio
+from src.utils import safe_api_call
+
 async def fetch_multiple_ohlcv(exchange, symbols, timeframe, limit):
     tasks = [
         safe_api_call(exchange.fetch_ohlcv, symbol, timeframe, limit)
