@@ -1,5 +1,9 @@
 import ccxt.pro as ccxtpro
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class WebSocketStreamer:
     def __init__(self, exchange):
