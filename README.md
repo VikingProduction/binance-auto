@@ -1,5 +1,8 @@
 # binance-auto
 
+BOT API ARE BLOCKED ON CERTAIN COUNTRY DUE TO MICA
+EX OF COUNTRY BLOCKED: es, usa, fr, it(?) and more see MICA reglementation here: https://www.binance.com/en/square/post/24386485643034
+
 Un bot de trading automatisé asynchrone pour Binance, conçu pour être robuste, sécurisé et prêt pour la production. Il applique systématiquement les règles d'Exchange, gère les limites d'API, expose des métriques Prometheus et persiste l'état des positions pour un trailing-stop fiable.
 
 ## ⚙️ Fonctionnalités principales
