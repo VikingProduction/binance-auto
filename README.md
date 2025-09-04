@@ -260,5 +260,5 @@ MIT License - Voir le fichier LICENSE pour plus de détails.
 Ce bot est fourni à des fins éducatives. Le trading automatisé comporte des risques significatifs. Utilisez-le uniquement avec des fonds que vous pouvez vous permettre de perdre. Les développeurs ne sont pas responsables des pertes financières.
 
 **Mainteneur** : VikingProduction  
-**Version** : 1.0.0  
+**Version** : 1.0.2  
 **Dernière mise à jour** : Septembre 2025
